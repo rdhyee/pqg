@@ -211,12 +211,12 @@ uv run pytest tests/test_typed_edges.py -v
 uv run pytest tests/test_format_equivalence.py -v
 
 # Integration test with real data
-uv run python scripts/sql_convert_isamples.py \
+uv run python -m pqg.sql_converter \
     /path/to/export.parquet \
     /tmp/narrow_test.parquet \
     --format narrow
 
-uv run python scripts/sql_convert_isamples.py \
+uv run python -m pqg.sql_converter \
     /path/to/export.parquet \
     /tmp/wide_test.parquet \
     --format wide

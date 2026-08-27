@@ -265,6 +265,28 @@ pqg geo my_graph.parquet > output.geojson
 
 See the [CLI Reference](docs/cli-reference.md) for complete documentation.
 
+### Converting the iSamples export
+
+`pqg.sql_converter` turns the iSamples export parquet (Zenodo
+[doi:10.5281/zenodo.15278211](https://doi.org/10.5281/zenodo.15278211)) into narrow or wide PQG:
+
+```bash
+# narrow (entities + edge rows)
+python -m pqg.sql_converter isamples_export.parquet out_narrow.parquet
+# wide (relationships as p__* columns)
+python -m pqg.sql_converter isamples_export.parquet out_wide.parquet --wide
+```
+
+or from Python, `from pqg.sql_converter import convert_isamples_sql`.
+
+**Determinism contract.** Given identical input bytes the converter produces identical
+output bytes, independent of DuckDB thread count. Every entity and edge `row_id` is
+assigned by a total ordering (source rows by `sample_identifier`, which is unique in the
+export; de-duplicated concepts/agents/sites by their `pid`; multi-valued edges by the
+source row and the array position), site de-duplication keeps the fields of the
+lowest-ordered member, and wide-format relationship arrays preserve the input array
+order. `tests/test_determinism.py` enforces this on a committed 140-row fixture.
+
 ## Why PQG?
 
 **vs. Neo4j / Full Graph Databases:**
