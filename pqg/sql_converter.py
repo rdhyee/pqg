@@ -62,10 +62,18 @@ def convert_isamples_sql(
         print(f"Converting {input_parquet} to {'wide' if wide else 'narrow'} PQG format...")
         print(f"  Site deduplication: {'enabled (precision={})'.format(site_precision) if dedupe_sites else 'disabled'}")
 
-    # Count source rows
-    source_count = con.execute(f"""
-        SELECT COUNT(*) FROM read_parquet('{input_parquet}')
-    """).fetchone()[0]
+    # Count source rows and enforce the ordering precondition: every id assignment
+    # is ordered by sample_identifier, so it must be unique and non-null.
+    source_count, distinct_ids, null_ids = con.execute(f"""
+        SELECT COUNT(*), COUNT(DISTINCT sample_identifier),
+               COUNT(*) FILTER (WHERE sample_identifier IS NULL)
+        FROM read_parquet('{input_parquet}')
+    """).fetchone()
+    if null_ids or distinct_ids != source_count:
+        raise ValueError(
+            f"sample_identifier must be unique and non-null for deterministic conversion: "
+            f"{source_count:,} rows, {distinct_ids:,} distinct, {null_ids:,} NULL"
+        )
     stats["source_rows"] = source_count
     if verbose:
         print(f"  Source rows: {source_count:,}")
@@ -1163,7 +1171,7 @@ def _build_narrow_edges_staged(con, output_parquet: str, entity_max: int, verbos
         QUALIFY row_number() OVER (PARTITION BY site.pid ORDER BY s.sample_identifier) = 1
     """)
 
-    edge_sl_max = con.execute(f"SELECT COALESCE(MAX(row_id), {edge_ss_max}) FROM edge_site_location").fetchone()[0]
+    edge_sl_max = con.execute(f"SELECT COALESCE(MAX(row_id), {edge_el_max}) FROM edge_site_location").fetchone()[0]
 
     # Edge: Sample -> has_sample_object_type -> Concept (full 40-column schema)
     con.execute(f"""

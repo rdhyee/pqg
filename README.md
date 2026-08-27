@@ -280,12 +280,28 @@ python -m pqg.sql_converter isamples_export.parquet out_wide.parquet --wide
 or from Python, `from pqg.sql_converter import convert_isamples_sql`.
 
 **Determinism contract.** Given identical input bytes the converter produces identical
-output bytes, independent of DuckDB thread count. Every entity and edge `row_id` is
-assigned by a total ordering (source rows by `sample_identifier`, which is unique in the
-export; de-duplicated concepts/agents/sites by their `pid`; multi-valued edges by the
-source row and the array position), site de-duplication keeps the fields of the
-lowest-ordered member, and wide-format relationship arrays preserve the input array
-order. `tests/test_determinism.py` enforces this on a committed 140-row fixture.
+*rows* — every entity, edge, `row_id`, and `p__*` array — independent of DuckDB thread count.
+With the pinned DuckDB (see `uv.lock`) the output *files* are byte-identical too, verified
+on the full April 2025 export; DuckDB itself only documents row-order preservation
+(`preserve_insertion_order`), not stable Parquet encoding, so treat byte identity as
+verified-per-version rather than guaranteed across DuckDB upgrades.
+
+Precondition: `sample_identifier` must be unique and non-null (the converter raises
+otherwise). Ordering rules: source rows by `sample_identifier`; de-duplicated
+concepts/agents/sites by `pid`; multi-valued edges by the source row and the array
+position, with the joined target `row_id` as tie-break; site de-duplication keeps the
+fields of the member with the lowest `sample_identifier`; wide `p__*` arrays preserve
+the input array order.
+
+Observable consequences worth knowing: (1) agent pids are case- and whitespace-folded
+while agents are de-duplicated on `(pid, name, role)`, so one pid can map to several
+Agent rows (isamplesorg/pqg#28) — narrow output then emits one edge per matching row and
+wide `p__registrant` keeps the lowest `row_id`; (2) the `_edge_<kind>_N` suffix is the
+rank after join expansion, which equals the array position except in that duplicate case;
+(3) `p__*` arrays are in source-list order, so consumers that assumed set semantics are
+unaffected and consumers that assumed a different order now get a stable one.
+
+`tests/test_determinism.py` enforces this on a committed 140-row fixture.
 
 ## Why PQG?
 

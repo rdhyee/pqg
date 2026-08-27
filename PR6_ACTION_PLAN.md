@@ -213,13 +213,11 @@ uv run pytest tests/test_format_equivalence.py -v
 # Integration test with real data
 uv run python -m pqg.sql_converter \
     /path/to/export.parquet \
-    /tmp/narrow_test.parquet \
-    --format narrow
+    /tmp/narrow_test.parquet
 
 uv run python -m pqg.sql_converter \
     /path/to/export.parquet \
-    /tmp/wide_test.parquet \
-    --format wide
+    /tmp/wide_test.parquet --wide
 
 # Validate output
 uv run python -c "
