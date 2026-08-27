@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Exploring property graph representation in DuckDB"
 authors = [{ name = "datadave", email = "605409+datadavev@users.noreply.github.com" }]
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "duckdb>=1.2.0",
     "graphviz>=0.20.3",

@@ -308,7 +308,7 @@ Contributions are welcome! Please:
 
 ## License
 
-See the LICENSE file for details.
+MIT — see the [LICENSE](LICENSE) file for details.
 
 ## Citation
 
