@@ -29,6 +29,13 @@ from pqg.sql_converter import convert_isamples_sql
 FIXTURE = Path(__file__).parent / "fixtures" / "isamples_export_fixture.parquet"
 FORMATS = pytest.mark.parametrize("wide", [False, True], ids=["narrow", "wide"])
 
+# The converter's site de-duplication key (sql_converter._convert_staged, dedupe_sites=True,
+# site_precision=5). Kept in sync by test_site_dedupe_keeps_lowest_sample_identifier_member.
+SITE_KEY = """'site:' || COALESCE(CAST(ROUND(produced_by.sampling_site.sample_location.latitude, 5) AS VARCHAR), 'NULL') || '_' ||
+             COALESCE(CAST(ROUND(produced_by.sampling_site.sample_location.longitude, 5) AS VARCHAR), 'NULL') || '_' ||
+             COALESCE(LOWER(TRIM(produced_by.sampling_site.label)), '') || '_' ||
+             COALESCE(LOWER(TRIM(CAST(produced_by.sampling_site.place_name AS VARCHAR))), '')"""
+
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -63,10 +70,14 @@ def test_fixture_exercises_every_ordering_path():
     assert q("len(related_resource) > 0") >= 20
     assert q("curation IS NOT NULL") >= 20
     assert q("len(produced_by.responsibility) > 0") >= 20
-    # duplicate site keys → site de-duplication has to choose a winner
-    dup_sites = duckdb.sql(f"""SELECT count(*) FROM (SELECT produced_by.sampling_site.label AS l, count(*) AS c
-                                FROM read_parquet('{FIXTURE}') GROUP BY 1 HAVING c > 1)""").fetchone()[0]
-    assert dup_sites >= 5
+    # duplicate site KEYS (the converter's real key, not just the label) → site
+    # de-duplication has to choose a winner
+    dup_keys, dup_rows = duckdb.sql(f"""
+        SELECT count(*), sum(c) FROM (SELECT {SITE_KEY} AS k, count(*) AS c
+                FROM read_parquet('{FIXTURE}') WHERE produced_by.sampling_site IS NOT NULL
+                GROUP BY 1 HAVING c > 1)""").fetchone()
+    assert dup_keys >= 3, f"fixture has only {dup_keys} duplicated site keys"
+    assert dup_rows >= 2 * dup_keys
 
 
 @FORMATS
@@ -130,13 +141,9 @@ def test_site_dedupe_keeps_lowest_sample_identifier_member(tmp_path):
     with the lowest sample_identifier."""
     out = tmp_path / "out.parquet"
     _convert(out, wide=True)
-    key = """'site:' || COALESCE(CAST(ROUND(produced_by.sampling_site.sample_location.latitude, 5) AS VARCHAR), 'NULL') || '_' ||
-             COALESCE(CAST(ROUND(produced_by.sampling_site.sample_location.longitude, 5) AS VARCHAR), 'NULL') || '_' ||
-             COALESCE(LOWER(TRIM(produced_by.sampling_site.label)), '') || '_' ||
-             COALESCE(LOWER(TRIM(CAST(produced_by.sampling_site.place_name AS VARCHAR))), '')"""
     bad = duckdb.sql(f"""
         WITH rule AS (
-            SELECT {key} AS pid,
+            SELECT {SITE_KEY} AS pid,
                    first(produced_by.sampling_site.description ORDER BY sample_identifier) AS d0,
                    first(source_collection ORDER BY sample_identifier) AS n0
             FROM read_parquet('{FIXTURE}') WHERE produced_by.sampling_site IS NOT NULL GROUP BY 1)
